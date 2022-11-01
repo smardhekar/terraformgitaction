@@ -1,64 +1,43 @@
 name: 'Terraform'
- 
 on:
-  push:
-    branches:
-    - main
-  pull_request:
- 
+  workflow_dispatch:
+    inputs:
+      TFAction:
+        description: "Terraform Action- Apply or Destroy"     
+        required: true
+        default: "apply"
+permissions:
+  contents: read
 jobs:
   terraform:
     name: 'Terraform'
-    env:
-      ARM_CLIENT_ID: ${{ secrets.AZURE_CREDENTIALS }}
-      ARM_CLIENT_SECRET: ${{ secrets.AZURE_CREDENTIALS }}
-      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_CREDENTIALS }}
-      ARM_TENANT_ID: ${{ secrets.AZURE_CREDENTIALS }}
     runs-on: ubuntu-latest
-    environment: production
- 
-    # Use the Bash shell regardless whether the GitHub Actions runner is ubuntu-latest, macos-latest, or windows-latest
+    environment: dev
+    env:
+      ARM_CLIENT_ID: ${{ secrets.CLIENT_ID }}
+      ARM_CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.SUBSCRIPTION_ID }}
+      ARM_TENANT_ID: ${{ secrets.TENANT_ID }}
+      TerraformBackendStorageAccount: "mystgacount"
+      TerraformBackendResourceGroup: "myrg"
+      TerraformBackendStorageContainer: "state"           
+      
     defaults:
       run:
         shell: bash
- 
-    steps:
-    # Checkout the repository to the GitHub Actions runner
+steps:
     - name: Checkout
-      uses: actions/checkout@v2
- 
-    - name: 'Terraform Format'
-      uses: hashicorp/terraform-github-actions@master
-      with:
-        tf_actions_version: 0.14.8
-        tf_actions_subcommand: 'fmt'
-        tf_actions_working_dir: "./terraform"
-         
-    - name: 'Terraform Init'
-      uses: hashicorp/terraform-github-actions@master
-      with:
-        tf_actions_version: 0.14.8
-        tf_actions_subcommand: 'init'
-        tf_actions_working_dir: "./terraform"
- 
-    - name: 'Terraform Validate'
-      uses: hashicorp/terraform-github-actions@master
-      with:
-        tf_actions_version: 0.14.8
-        tf_actions_subcommand: 'validate'
-        tf_actions_working_dir: "./terraform"
-         
-    - name: 'Terraform Plan'
-      uses: hashicorp/terraform-github-actions@master
-      with:
-        tf_actions_version: 0.14.8
-        tf_actions_subcommand: 'plan'
-        tf_actions_working_dir: "./terraform"
- 
-    - name: Terraform Apply
-      if: github.ref == 'refs/heads/main'
-      uses: hashicorp/terraform-github-actions@master
-      with:
-        tf_actions_version: 0.14.8
-        tf_actions_subcommand: 'apply'
-        tf_actions_working_dir: "./terraform"
+      uses: actions/checkout@v3
+      
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v1
+- name: Terraform Init
+      run: terraform init -backend-config=storage_account_name=$TerraformBackendStorageAccount -backend-config=container_name=$TerraformBackendStorageContainer -backend-config=key=dev.tfstate -backend-config=resource_group_name=$TerraformBackendResourceGroup -backend-config=subscription_id="$ARM_SUBSCRIPTION_ID" -backend-config=tenant_id="$ARM_TENANT_ID" -backend-config=client_id="$ARM_CLIENT_ID" -backend-config=client_secret="$ARM_CLIENT_SECRET"
+- name: Terraform Plan
+      run: terraform plan -out=plan.tfplan -input=false -var="location=eastus" -var="resource_group_name=tfdemo" -var="storage_account_name=tfdemoabcxxyg" -var="storage_account_tier=Standard" -var="virtual_network_name=myvnet"
+- name: Terraform Apply
+      if: ${{ inputs.TFAction == 'apply'}}  
+      run: terraform apply -input=false -auto-approve plan.tfplan
+- name: Terraform Destroy
+      if: ${{ inputs.TFAction == 'destroy' }} 
+      run: terraform destroy -input=false -auto-approve
